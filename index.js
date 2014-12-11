@@ -2,12 +2,14 @@ var express = require('express'),
 	path = require('path'),
 	fs = require('fs');
 
-function isValidPath(p) {
+function isValid(p) {
 	try{
-		fs.statSync(p);
+		if(!fs.statSync(p).isDirectory()){
+			throw new Error();
+		}
 		return true;
 	}catch(e) {
-		console.warn("Invalid path: '"+p+"'");
+		console.warn("Invalid directory: '"+p+"'");
 		return false;
 	}
 }
@@ -28,16 +30,32 @@ function serve(options) {
 		.map(function(pathToServe) {
 			return path.resolve(pathToServe);
 		})
-		.filter(isValidPath);
-	s.forEach(function(pathToServe) {
-			app.use(express.static(pathToServe));
-			console.log("Serving '"+pathToServe+"'.");
-		});
+		.filter(isValid);
 
-	if(!s || s.length==0){
-		console.error("Can't serve because there are no valid paths.");
-		return null;
+	switch(s.length) {
+		case 0:
+			console.error("Can't serve because there are no valid directories.");
+			return null;
+		case 1:
+			s.forEach(function(pathToServe) {
+				app.use(express.static(pathToServe));
+				console.log("Serving '"+pathToServe+"'.");
+			});
+		break;
+		default:
+			var basenames = {};
+			s.forEach(function(pathToServe) {
+				var basename = path.basename(pathToServe);
+				if(basenames[basename]) {
+					console.warn("Cannot serve '"+pathToServe+"', conflicting with '"+basenames[basename]);
+				} else {
+					basenames[basename] = pathToServe;
+					app.use("/"+basename, express.static(pathToServe));
+					console.log("Serving '"+pathToServe+"' in /"+basename+".");
+				}
+			});
 	}
+
 	app.listen(options.port);
 	console.log("Serving @ localhost:"+options.port);
 	console.log("Hit Ctrl+C to stop.");
